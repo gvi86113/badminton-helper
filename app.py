@@ -176,18 +176,24 @@ class SchoolScraper:
                 seen.add(item['url'])
                 unique_items.append(item)
         
-        # 2. 抓取下一頁連結
+        # 2. 抓取下一頁連結 (更寬鬆的搜尋邏輯)
         next_url = None
-        # 尋找含有「下一頁」文字的連結
-        next_link = soup.find('a', string=re.compile("下一頁"))
-        if next_link and next_link.get('href'):
-            # 確保不是 javascript void 等無效連結
-            if "javascript" not in next_link['href']:
-                next_url = urljoin(self.base_url, next_link['href'])
-                # 防止無窮迴圈 (如果下一頁等於當前頁)
-                if next_url == self.list_url:
-                    next_url = None
-
+        # 直接遍歷所有連結，檢查文字內容是否包含「下一頁」
+        pagination_links = soup.find_all('a', href=True)
+        for link in pagination_links:
+            # 去除空白後檢查文字
+            link_text = link.get_text(strip=True)
+            if "下一頁" in link_text:
+                href = link['href']
+                # 排除 javascript void 或空連結
+                if "javascript" not in href.lower() and href != "#":
+                    full_url = urljoin(self.base_url, href)
+                    # 只有當網址不一樣時才視為下一頁 (避免原地打轉)
+                    if full_url != self.list_url:
+                        next_url = full_url
+                        self.log(f"🔗 發現翻頁連結: {next_url}")
+                        break
+        
         return unique_items, next_url
 
     def _parse_nss(self, html):
