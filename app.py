@@ -20,20 +20,22 @@ def parse_taiwan_date(date_str):
         return None
     date_str = str(date_str).strip()
     
-    # 格式: 113.05.20, 113-05-20, 113/05/20
-    minguo_match = re.search(r'(\d{3})[./-](\d{1,2})[./-](\d{1,2})', date_str)
-    if minguo_match:
-        year = int(minguo_match.group(1)) + 1911
-        month = int(minguo_match.group(2))
-        day = int(minguo_match.group(3))
-        return TP_TIMEZONE.localize(datetime(year, month, day))
-    
+    # 【修正重點】優先嘗試匹配西元年 (4碼年份)，避免 2025 被誤判為民國 025 年
     # 格式: 2024-05-20, 2024/05/20
     western_match = re.search(r'(\d{4})[./-](\d{1,2})[./-](\d{1,2})', date_str)
     if western_match:
         year = int(western_match.group(1))
         month = int(western_match.group(2))
         day = int(western_match.group(3))
+        return TP_TIMEZONE.localize(datetime(year, month, day))
+
+    # 再嘗試匹配民國年 (3碼年份)
+    # 格式: 113.05.20, 113-05-20, 113/05/20
+    minguo_match = re.search(r'(\d{3})[./-](\d{1,2})[./-](\d{1,2})', date_str)
+    if minguo_match:
+        year = int(minguo_match.group(1)) + 1911
+        month = int(minguo_match.group(2))
+        day = int(minguo_match.group(3))
         return TP_TIMEZONE.localize(datetime(year, month, day))
         
     return None
@@ -93,21 +95,25 @@ class SchoolScraper:
                     self.log(f"❌ 日期無法解析: {debug_info}")
                     continue
 
-                # 2. 關鍵字檢查 (OR logic: 只要中一個就算)
-                # 使用 any() 來檢查是否有任何一個關鍵字出現在標題中
+                # 2. 關鍵字檢查
                 has_keyword = any(k in item['title'] for k in KEYWORDS)
                 
-                # 3. 時間範圍檢查
+                # 3. 時間範圍與過濾
                 days_diff = (get_current_time() - item_date).days
                 
                 if item_date > limit_date:
                     if has_keyword:
                         filtered_results.append(item)
+                        # 只有符合關鍵字的才顯示綠色勾勾，保持版面乾淨
                         self.log(f"✅ 保留: {debug_info} (命中關鍵字)")
                     else:
-                         self.log(f"⚠️ 捨棄 (無關鍵字): {debug_info}")
+                        # 不符合關鍵字的項目，直接忽略，不寫入 Log 干擾視線，除非你需要極度詳細的除錯
+                        # self.log(f"⚠️ 捨棄 (無關鍵字): {debug_info}")
+                        pass
                 else:
-                    self.log(f"⏳ 捨棄 (過期): {debug_info} (距今 {days_diff} 天 > {days_limit} 天)")
+                    # 只有當它「有關鍵字」但「過期」時才顯示，避免顯示一堆過期的無關公告
+                    if has_keyword:
+                        self.log(f"⏳ 捨棄 (過期): {debug_info} (距今 {days_diff} 天 > {days_limit} 天)")
             
             return filtered_results, self.logs
             
